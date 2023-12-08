@@ -94,9 +94,11 @@ const connectToDatabase = async (document_db) => {
   //   const element = array[i];
 
   // }
+  let emailCount = 0;
+
   const generateUser = () => ({
     name: faker.internet.userName(),
-    email: faker.internet.email(),
+    email: `${faker.internet.userName()}_${emailCount++}@fakemail.com`,
     join_date: faker.date.past(),
     last_login: faker.date.recent(),
   });
@@ -150,7 +152,7 @@ const connectToDatabase = async (document_db) => {
     updated_at: faker.date.recent(),
   });
 
-  const comments = Array.from({ length: 2500 }, generateComments);
+  const comments = Array.from({ length: 30000 }, generateComments);
 
   const insertComment = async (comment) => {
     const newComment = await newClient.query(`INSERT INTO comments (created_by, commented_on, title, description, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)`, [comment.created_by, comment.commented_on, comment.title, comment.description, comment.created_at, comment.updated_at]);
