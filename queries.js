@@ -147,6 +147,29 @@ const userWithMostDocumentUpdates = `WITH UserUpdatedDocumentCount AS (
     UserUpdatedDocumentCount UDC ON u.id = UDC.created_by
     LIMIT 3;
     `;
+
+// unoptimized query and optimized queries
+const unoptimizedQuery = `SELECT COUNT(*) AS no_comments_docs_count
+FROM documents d
+WHERE d.id NOT IN (
+    SELECT DISTINCT commented_on
+    FROM comments
+    WHERE commented_on IS NOT NULL
+);`;
+const optimizedQuery = `SELECT COUNT(*) AS no_comments_docs_count
+    FROM documents d
+    LEFT JOIN comments c ON d.id = c.commented_on
+    WHERE c.commented_on IS NULL;
+    ;`;
+
+const unoptimizedQuery2 = `SELECT * FROM documents;`;
+const optimizedQuery2 = `SELECT id, title FROM documents;`;
+
+const duplicateEmailCheck = `SELECT email, COUNT(*)
+    FROM users
+    GROUP BY email
+    HAVING COUNT(*) > 1;`;
+
 module.exports = {
   createUsersTable,
   createDocumentsTable,
@@ -167,4 +190,9 @@ module.exports = {
   joiningYear,
   averageDocumentCreationTime,
   userWithMostDocumentUpdates,
+  unoptimizedQuery,
+  optimizedQuery,
+  unoptimizedQuery2,
+  optimizedQuery2,
+  duplicateEmailCheck,
 };

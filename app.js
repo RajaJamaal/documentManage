@@ -21,6 +21,11 @@ const {
   joiningYear,
   averageDocumentCreationTime,
   userWithMostDocumentUpdates,
+  unoptimizedQuery,
+  optimizedQuery,
+  unoptimizedQuery2,
+  optimizedQuery2,
+  duplicateEmailCheck,
 } = require("./queries");
 
 const createDatabase = async (postgres) => {
@@ -126,14 +131,30 @@ const connectToDatabase = async (document_db) => {
     const users = Array.from({ length: 5000 }, generateUser);
 
     const insertUser = async (user) => {
-      const newUser = await newClient.query(
-        `INSERT INTO users (name, email, join_date, last_login) VALUES ($1, $2, $3, $4) RETURNING id`,
-        [user.name, user.email, user.join_date, user.last_login]
-      );
-      user.id = newUser.rows[0].id;
-      console.log(`user ${user.name} added to DB with id: ${user.id}`);
+      try {
+        // Transactional Control implemented during user insertion
+        await newClient.query("BEGIN");
 
-      return user;
+        // Insert the user
+        const newUser = await newClient.query(
+          `INSERT INTO users (name, email, join_date, last_login) VALUES ($1, $2, $3, $4) RETURNING id`,
+          [user.name, user.email, user.join_date, user.last_login]
+        );
+
+        // If the insert was successful, commit the transaction
+        await newClient.query("COMMIT");
+
+        user.id = newUser.rows[0].id;
+        console.log(`user ${user.name} added to DB with id: ${user.id}`);
+
+        return user;
+      } catch (error) {
+        // If there was an error, rollback the transaction
+        await newClient.query("ROLLBACK");
+
+        // Log the error
+        console.error("An error occurred while INSERTING new user:", error);
+      }
     };
 
     for (const user of users) {
@@ -155,18 +176,35 @@ const connectToDatabase = async (document_db) => {
       const documents = Array.from({ length: 250 }, generateDocs);
 
       const insertDoc = async (doc) => {
-        const newDoc = await newClient.query(
-          `INSERT INTO documents (created_by, title, description, created_at, updated_at) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-          [
-            doc.created_by,
-            doc.title,
-            doc.description,
-            doc.created_at,
-            doc.updated_at,
-          ]
-        );
-        doc.id = newDoc.rows[0].id;
-        console.log(`doc.id=${doc.id} added to DB by user.id=${user.id}`);
+        try {
+          // Transactional Control implemented during document insertion
+
+          await newClient.query("BEGIN");
+
+          const newDoc = await newClient.query(
+            `INSERT INTO documents (created_by, title, description, created_at, updated_at) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+            [
+              doc.created_by,
+              doc.title,
+              doc.description,
+              doc.created_at,
+              doc.updated_at,
+            ]
+          );
+
+          // If the insert was successful, commit the transaction
+          await newClient.query("COMMIT");
+          doc.id = newDoc.rows[0].id;
+          console.log(`doc.id=${doc.id} added to DB by user.id=${user.id}`);
+        } catch (error) {
+          // If there was an error, rollback the transaction
+          await newClient.query("ROLLBACK");
+          // Log the error
+          console.error(
+            "An error occurred while inserting new document!:",
+            error
+          );
+        }
       };
 
       for (doc of documents) {
@@ -187,17 +225,33 @@ const connectToDatabase = async (document_db) => {
     const comments = Array.from({ length: 30000 }, generateComments);
 
     const insertComment = async (comment) => {
-      const newComment = await newClient.query(
-        `INSERT INTO comments (created_by, commented_on, title, description, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)`,
-        [
-          comment.created_by,
-          comment.commented_on,
-          comment.title,
-          comment.description,
-          comment.created_at,
-          comment.updated_at,
-        ]
-      );
+      try {
+        // Transactional Control implemented during comment insertion
+        await newClient.query("BEGIN");
+
+        const newComment = await newClient.query(
+          `INSERT INTO comments (created_by, commented_on, title, description, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            comment.created_by,
+            comment.commented_on,
+            comment.title,
+            comment.description,
+            comment.created_at,
+            comment.updated_at,
+          ]
+        );
+
+        await newClient.query("COMMIT");
+      } catch (error) {
+        // If there was an error, rollback the transaction
+        await newClient.query("ROLLBACK");
+
+        // Log the error
+        console.error(
+          "An error occurred while INSERTING  new comment!!:",
+          error
+        );
+      }
     };
 
     for (comment of comments) {
@@ -209,6 +263,9 @@ const connectToDatabase = async (document_db) => {
   }
 
   console.log("DB is already populated, skipping data seeding...");
+  await newClient.query(`DROP INDEX idx_users_id;`);
+  await newClient.query(`DROP INDEX idx_documents_created_by;`);
+  await newClient.query(`DROP INDEX idx_comments_commented_on;`);
 
   //==============================================================================================================
   // ////// Queries using different types of joins to fetch combined data from the users, documents and comments tables
@@ -229,6 +286,7 @@ const connectToDatabase = async (document_db) => {
   // // FULL-OUTER-JOIN => returnS a table with all users+documents+comments, regardless of whether they have any relationships with each other
   const fullOuterJoinData = await newClient.query(fullOuterJoin);
   console.log("FULL-OUTER-join-Data", fullOuterJoinData.rows);
+
   //=========================================================================================================================
   // Using aggregate functions like COUNT, AVG, MAX, MIN, SUM to analyze data (e.g., average number of comments per document).
   // COUNT => Returns the total count of docs in document table
@@ -287,9 +345,101 @@ const connectToDatabase = async (document_db) => {
   );
 
   // / SQL DATE FUNCTIONS => using SQL CTE to calculate users with most doc updates
-  const userWithMostDocumentUpdatesData = await newClient.query(userWithMostDocumentUpdates);
-  console.log("userWithMostDocumentUpdatesData =",userWithMostDocumentUpdatesData.rows);
+  const userWithMostDocumentUpdatesData = await newClient.query(
+    userWithMostDocumentUpdates
+  );
+  console.log(
+    "userWithMostDocumentUpdatesData =",
+    userWithMostDocumentUpdatesData.rows
+  );
 
+  // ===================================================================================================
+  /**Performance Optimization:**
+Data Integrity Checks:**
+
+- Create queries to check the integrity of the data (e.g., ensuring no comments exist for non-existing documents).
+
+Transactional Control:**
+
+- Write SQL scripts that use transactions to ensure data integrity during multiple insert/update/delete operations.
+
+#### Additional Challenges:
+
+Security Best Practices:** Implement views or stored procedures that follow security best practices.
+
+Reporting:** Design queries that could be used for reporting purposes, like user activity over time or most commented documents.
+
+Database Administration:** Include tasks on backup strategies or replication setups. */
+
+  // Performance Optimization of SQL Queries
+  console.time("Unoptimized-QUERY");
+  await newClient.query(unoptimizedQuery);
+  console.timeEnd("Unoptimized-QUERY");
+
+  console.time("Optimized-QUERY");
+  await newClient.query(optimizedQuery);
+  console.timeEnd("Optimized-QUERY");
+  /////////////////////////////////////
+  console.time("Unoptimized-QUERY-2");
+  await newClient.query(unoptimizedQuery2);
+  console.timeEnd("Unoptimized-QUERY-2");
+
+  console.time("Optimized-QUERY-2");
+  await newClient.query(optimizedQuery2);
+  console.timeEnd("Optimized-QUERY-2");
+
+  // query execution time of the already used JOIN QUERIES
+  console.log("BEFORE CREATING INDEXES.....");
+  console.time("innerJoin-QUERY");
+  await newClient.query(innerJoin);
+  console.timeEnd("innerJoin-QUERY");
+
+  console.time("leftJoin-QUERY");
+  await newClient.query(leftJoin);
+  console.timeEnd("leftJoin-QUERY");
+
+  console.time("rightJoin-QUERY");
+  await newClient.query(rightJoin);
+  console.timeEnd("rightJoin-QUERY");
+
+  console.time("fullOuterJoin-QUERY");
+  await newClient.query(fullOuterJoin);
+  console.timeEnd("fullOuterJoin-QUERY");
+
+  // creating indexes
+  console.log("-------------CREATING INDEXES");
+  await newClient.query(`CREATE INDEX idx_users_id ON users(id);`);
+  await newClient.query(
+    `CREATE INDEX idx_documents_created_by ON documents(created_by);`
+  );
+  await newClient.query(
+    `CREATE INDEX idx_comments_commented_on ON comments(commented_on);`
+  );
+  console.log(" ----------------INDEXES CREATED! Running join queries again..");
+
+  console.time("innerJoin-QUERY");
+  await newClient.query(innerJoin);
+  console.timeEnd("innerJoin-QUERY");
+
+  console.time("leftJoin-QUERY");
+  await newClient.query(leftJoin);
+  console.timeEnd("leftJoin-QUERY");
+
+  console.time("rightJoin-QUERY");
+  await newClient.query(rightJoin);
+  console.timeEnd("rightJoin-QUERY");
+
+  console.time("fullOuterJoin-QUERY");
+  await newClient.query(fullOuterJoin);
+  console.timeEnd("fullOuterJoin-QUERY");
+
+  // ===================================================
+  // Data Integrity Check => Searching for duplicate emails
+  const duplicateEmailCheckData = await newClient.query(duplicateEmailCheck);
+  if (!duplicateEmailCheckData.rows.length) {
+    console.log(`.
+    duplicateEmailCheck = NO duplicate EMAIL found!!!`);
+  }
 };
 
 createDatabase("document_db")
