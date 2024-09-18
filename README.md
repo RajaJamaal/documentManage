@@ -1,4 +1,4 @@
-On running the server file 'app.js' 
+On running the base file 'app.js' 
 the code creates a database named document_db, 
 
 (all the DB operations are transactional) 
