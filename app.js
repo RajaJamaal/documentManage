@@ -173,7 +173,7 @@ const connectToDatabase = async (document_db) => {
 
       console.log("created_by", user.id);
 
-      const documents = Array.from({ length: 250 }, generateDocs);
+      const documents = Array.from({ length: 25 }, generateDocs);
 
       const insertDoc = async (doc) => {
         try {
@@ -222,7 +222,7 @@ const connectToDatabase = async (document_db) => {
       updated_at: faker.date.recent(),
     });
 
-    const comments = Array.from({ length: 30000 }, generateComments);
+    const comments = Array.from({ length: 30 }, generateComments);
 
     const insertComment = async (comment) => {
       try {
